@@ -4,90 +4,57 @@ import crypto from 'crypto';
 import fs from 'fs';
 import chalk from 'chalk';
 import figlet from 'figlet';
+import inquirer from 'inquirer';
 
 // Ana şifre kontrolü için dosya
 const MASTER_PASS_FILE = 'pass';
 // Şifrelerin tutulacağı dosya
 const PASSWORDS_FILE = 'passes';
 
-function encryptText(text, masterPassword) {
-    const algorithm = 'aes-256-gcm';
-    const salt = crypto.randomBytes(16);
-    const key = crypto.pbkdf2Sync(masterPassword, salt, 100000, 32, 'sha512');
+// Şifreleme fonksiyonları
+function encrypt(text, key) {
     const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv(algorithm, key, iv);
-    
-    let encrypted = cipher.update(text, 'utf8', 'hex');
-    encrypted += cipher.final('hex');
-    const authTag = cipher.getAuthTag();
-    
-    return {
-        encrypted,
-        iv: iv.toString('hex'),
-        salt: salt.toString('hex'),
-        authTag: authTag.toString('hex')
-    };
+    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+    const encrypted = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    return Buffer.concat([iv, tag, encrypted]).toString('hex');
 }
 
-function decryptText(encryptedData, masterPassword) {
-    const algorithm = 'aes-256-gcm';
-    const key = crypto.pbkdf2Sync(
-        masterPassword,
-        Buffer.from(encryptedData.salt, 'hex'),
-        100000,
-        32,
-        'sha512'
-    );
-    
-    const decipher = crypto.createDecipheriv(
-        algorithm,
-        key,
-        Buffer.from(encryptedData.iv, 'hex')
-    );
-    
-    decipher.setAuthTag(Buffer.from(encryptedData.authTag, 'hex'));
-    
-    let decrypted = decipher.update(encryptedData.encrypted, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-    
-    return decrypted;
+function decrypt(encryptedHex, key) {
+    const encrypted = Buffer.from(encryptedHex, 'hex');
+    const iv = encrypted.slice(0, 16);
+    const tag = encrypted.slice(16, 32);
+    const text = encrypted.slice(32);
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+    decipher.setAuthTag(tag);
+    return decipher.update(text) + decipher.final('utf8');
+}
+
+function deriveKey(password) {
+    return crypto.scryptSync(password, 'salt', 32);
 }
 
 function initializeVault(masterPassword) {
-    // Ana şifreyi şifrele ve kaydet
-    const encryptedMasterPass = encryptText(masterPassword, masterPassword);
-    fs.writeFileSync(MASTER_PASS_FILE, JSON.stringify(encryptedMasterPass));
-    
-    // Şifreler için boş dosya oluştur
-    fs.writeFileSync(PASSWORDS_FILE, JSON.stringify([]));
+    const key = deriveKey(masterPassword);
+    const hash = crypto.createHash('sha256').update(masterPassword).digest('hex');
+    fs.writeFileSync(MASTER_PASS_FILE, hash);
+    fs.writeFileSync(PASSWORDS_FILE, encrypt('{}', key));
 }
 
-function validateMasterPassword(masterPassword) {
-    try {
-        const encryptedData = JSON.parse(fs.readFileSync(MASTER_PASS_FILE));
-        const decrypted = decryptText(encryptedData, masterPassword);
-        return decrypted === masterPassword;
-    } catch {
-        return false;
-    }
+function validateMasterPassword(password) {
+    const hash = crypto.createHash('sha256').update(password).digest('hex');
+    return hash === fs.readFileSync(MASTER_PASS_FILE, 'utf8');
 }
 
-function addPassword(title, username, password, masterPassword) {
-    const passwords = JSON.parse(fs.readFileSync(PASSWORDS_FILE));
-    const encryptedPassword = encryptText(
-        JSON.stringify({ title, username, password }),
-        masterPassword
-    );
-    passwords.push(encryptedPassword);
-    fs.writeFileSync(PASSWORDS_FILE, JSON.stringify(passwords));
+function loadPasswords(masterPassword) {
+    const key = deriveKey(masterPassword);
+    const encrypted = fs.readFileSync(PASSWORDS_FILE, 'utf8');
+    return JSON.parse(decrypt(encrypted, key));
 }
 
-function getPasswords(masterPassword) {
-    const passwords = JSON.parse(fs.readFileSync(PASSWORDS_FILE));
-    return passwords.map(encryptedPass => {
-        const decrypted = decryptText(encryptedPass, masterPassword);
-        return JSON.parse(decrypted);
-    });
+function savePasswords(passwords, masterPassword) {
+    const key = deriveKey(masterPassword);
+    fs.writeFileSync(PASSWORDS_FILE, encrypt(JSON.stringify(passwords), key));
 }
 
 function generatePassword(length = 16) {
@@ -99,197 +66,152 @@ function generatePassword(length = 16) {
     return password;
 }
 
-function changeMasterPassword(oldPassword, newPassword) {
-    // Önce eski şifrenin doğruluğunu kontrol et
-    if (!validateMasterPassword(oldPassword)) {
-        throw new Error('Current password is incorrect');
-    }
-
-    // Tüm şifreleri al
-    const passwords = getPasswords(oldPassword);
-
-    // Yeni master şifreyi kaydet
-    const encryptedMasterPass = encryptText(newPassword, newPassword);
-    fs.writeFileSync(MASTER_PASS_FILE, JSON.stringify(encryptedMasterPass));
-
-    // Tüm şifreleri yeni master şifre ile tekrar şifrele
-    const newEncryptedPasswords = passwords.map(pass => 
-        encryptText(JSON.stringify(pass), newPassword)
-    );
-    fs.writeFileSync(PASSWORDS_FILE, JSON.stringify(newEncryptedPasswords));
-}
-
-function updatePassword(index, title, username, password, masterPassword) {
-    const passwords = JSON.parse(fs.readFileSync(PASSWORDS_FILE));
-    const encryptedPassword = encryptText(
-        JSON.stringify({ title, username, password }),
-        masterPassword
-    );
-    passwords[index] = encryptedPassword;
-    fs.writeFileSync(PASSWORDS_FILE, JSON.stringify(passwords));
-}
-
-function deletePassword(index) {
-    const passwords = JSON.parse(fs.readFileSync(PASSWORDS_FILE));
-    passwords.splice(index, 1);
-    fs.writeFileSync(PASSWORDS_FILE, JSON.stringify(passwords));
-}
-
 // Ana program
 console.clear();
 console.log(chalk.cyan(figlet.textSync('CryptNexus', { horizontalLayout: 'full' })));
 console.log(chalk.yellow('\nCreated by GlitchNexus - https://github.com/glitchnexus\n'));
 
-const masterPassExists = fs.existsSync(MASTER_PASS_FILE);
+async function main() {
+    const masterPassExists = fs.existsSync(MASTER_PASS_FILE);
 
-if (!masterPassExists) {
-    console.log('First time setup. Please enter a master password:');
-    process.stdin.once('data', (data) => {
-        const masterPassword = data.toString().trim();
+    if (!masterPassExists) {
+        const { masterPassword } = await inquirer.prompt([{
+            type: 'password',
+            name: 'masterPassword',
+            message: 'First time setup. Please enter a master password:'
+        }]);
         initializeVault(masterPassword);
         console.log('\nVault initialized. Please restart the program.');
         process.exit();
-    });
-} else {
-    console.log('Enter master password:');
-    process.stdin.once('data', (data) => {
-        const masterPassword = data.toString().trim();
-        
-        if (validateMasterPassword(masterPassword)) {
-            console.log('\nAccess granted!\n');
-            console.log(chalk.green('1.') + ' View Passwords');
-            console.log(chalk.green('2.') + ' Add New Password');
-            console.log(chalk.green('3.') + ' Generate Password');
-            console.log(chalk.green('4.') + ' Edit Password');
-            console.log(chalk.green('5.') + ' Delete Password');
-            console.log(chalk.green('6.') + ' Change Master Password');
-            console.log(chalk.green('7.') + ' Exit');
-            
-            let currentState = 'menu';
-            let tempData = {};
+    }
 
-            process.stdin.on('data', (input) => {
-                const text = input.toString().trim();
+    const { masterPassword } = await inquirer.prompt([{
+        type: 'password',
+        name: 'masterPassword',
+        message: 'Enter master password:'
+    }]);
 
-                switch (currentState) {
-                    case 'menu':
-                        switch (text) {
-                            case '1':
-                                const passwords = getPasswords(masterPassword);
-                                console.log('\nStored Passwords:');
-                                passwords.forEach((p, i) => {
-                                    console.log(`${i + 1}. ${p.title} (${p.username})`);
-                                });
-                                break;
+    if (!validateMasterPassword(masterPassword)) {
+        console.log(chalk.red('Invalid master password!'));
+        process.exit(1);
+    }
 
-                            case '2':
-                                currentState = 'add_title';
-                                console.log('\nEnter title:');
-                                break;
+    console.log('\nAccess granted!\n');
 
-                            case '3':
-                                const newPassword = generatePassword();
-                                console.log('\nGenerated Password:', newPassword);
-                                break;
+    while (true) {
+        const { action } = await inquirer.prompt([{
+            type: 'list',
+            name: 'action',
+            message: 'What would you like to do?',
+            choices: [
+                'View Passwords',
+                'Add New Password',
+                'Generate Password',
+                'Edit Password',
+                'Delete Password',
+                'Change Master Password',
+                'Exit'
+            ]
+        }]);
 
-                            case '4':
-                                const editPasswords = getPasswords(masterPassword);
-                                console.log('\nSelect password to edit (enter number):');
-                                editPasswords.forEach((p, i) => {
-                                    console.log(`${i + 1}. ${p.title} (${p.username})`);
-                                });
-                                currentState = 'edit_select';
-                                break;
+        const passwords = loadPasswords(masterPassword);
 
-                            case '5':
-                                const delPasswords = getPasswords(masterPassword);
-                                console.log('\nSelect password to delete (enter number):');
-                                delPasswords.forEach((p, i) => {
-                                    console.log(`${i + 1}. ${p.title} (${p.username})`);
-                                });
-                                currentState = 'delete_select';
-                                break;
-
-                            case '6':
-                                currentState = 'change_master_new';
-                                console.log('\nEnter new master password:');
-                                break;
-
-                            case '7':
-                                console.log('\nGoodbye!');
-                                process.exit(0);
-                        }
-                        break;
-
-                    case 'add_title':
-                        tempData.title = text;
-                        currentState = 'add_username';
-                        console.log('Enter username:');
-                        break;
-
-                    case 'add_username':
-                        tempData.username = text;
-                        currentState = 'add_password';
-                        console.log('Enter password:');
-                        break;
-
-                    case 'add_password':
-                        addPassword(tempData.title, tempData.username, text, masterPassword);
-                        console.log('\nPassword added successfully!');
-                        currentState = 'menu';
-                        tempData = {};
-                        break;
-
-                    case 'edit_select':
-                        tempData.index = parseInt(text) - 1;
-                        currentState = 'edit_title';
-                        console.log('Enter new title:');
-                        break;
-
-                    case 'edit_title':
-                        tempData.title = text;
-                        currentState = 'edit_username';
-                        console.log('Enter new username:');
-                        break;
-
-                    case 'edit_username':
-                        tempData.username = text;
-                        currentState = 'edit_password';
-                        console.log('Enter new password:');
-                        break;
-
-                    case 'edit_password':
-                        updatePassword(tempData.index, tempData.title, tempData.username, text, masterPassword);
-                        console.log('\nPassword updated successfully!');
-                        currentState = 'menu';
-                        tempData = {};
-                        break;
-
-                    case 'delete_select':
-                        deletePassword(parseInt(text) - 1);
-                        console.log('\nPassword deleted successfully!');
-                        currentState = 'menu';
-                        break;
-
-                    case 'change_master_new':
-                        try {
-                            changeMasterPassword(masterPassword, text);
-                            console.log('\nMaster password changed successfully! Please restart the program.');
-                            process.exit(0);
-                        } catch (error) {
-                            console.log('\nFailed to change master password:', error.message);
-                            currentState = 'menu';
-                        }
-                        break;
+        switch (action) {
+            case 'View Passwords':
+                if (Object.keys(passwords).length === 0) {
+                    console.log(chalk.yellow('\nNo passwords stored yet.'));
+                } else {
+                    console.log('\nStored Passwords:');
+                    Object.entries(passwords).forEach(([service, password]) => {
+                        console.log(chalk.green(`${service}: ${password}`));
+                    });
                 }
+                break;
 
-                if (currentState === 'menu') {
-                    console.log('\nSelect an option (1-7):');
+            case 'Add New Password':
+                const { service, password } = await inquirer.prompt([
+                    {
+                        type: 'input',
+                        name: 'service',
+                        message: 'Enter service name:'
+                    },
+                    {
+                        type: 'password',
+                        name: 'password',
+                        message: 'Enter password:'
+                    }
+                ]);
+                passwords[service] = password;
+                savePasswords(passwords, masterPassword);
+                console.log(chalk.green('\nPassword saved successfully!'));
+                break;
+
+            case 'Generate Password':
+                const { length } = await inquirer.prompt([{
+                    type: 'number',
+                    name: 'length',
+                    message: 'Enter password length:',
+                    default: 16
+                }]);
+                const generatedPassword = generatePassword(length);
+                console.log(chalk.green(`\nGenerated Password: ${generatedPassword}`));
+                break;
+
+            case 'Edit Password':
+                if (Object.keys(passwords).length === 0) {
+                    console.log(chalk.yellow('\nNo passwords to edit.'));
+                    break;
                 }
-            });
-        } else {
-            console.log('\nIncorrect master password!');
-            process.exit(1);
+                const { serviceToEdit } = await inquirer.prompt([{
+                    type: 'list',
+                    name: 'serviceToEdit',
+                    message: 'Select service to edit:',
+                    choices: Object.keys(passwords)
+                }]);
+                const { newPassword } = await inquirer.prompt([{
+                    type: 'password',
+                    name: 'newPassword',
+                    message: 'Enter new password:'
+                }]);
+                passwords[serviceToEdit] = newPassword;
+                savePasswords(passwords, masterPassword);
+                console.log(chalk.green('\nPassword updated successfully!'));
+                break;
+
+            case 'Delete Password':
+                if (Object.keys(passwords).length === 0) {
+                    console.log(chalk.yellow('\nNo passwords to delete.'));
+                    break;
+                }
+                const { serviceToDelete } = await inquirer.prompt([{
+                    type: 'list',
+                    name: 'serviceToDelete',
+                    message: 'Select service to delete:',
+                    choices: Object.keys(passwords)
+                }]);
+                delete passwords[serviceToDelete];
+                savePasswords(passwords, masterPassword);
+                console.log(chalk.green('\nPassword deleted successfully!'));
+                break;
+
+            case 'Change Master Password':
+                const { newMasterPassword } = await inquirer.prompt([{
+                    type: 'password',
+                    name: 'newMasterPassword',
+                    message: 'Enter new master password:'
+                }]);
+                const oldPasswords = loadPasswords(masterPassword);
+                initializeVault(newMasterPassword);
+                savePasswords(oldPasswords, newMasterPassword);
+                console.log(chalk.green('\nMaster password changed successfully!'));
+                return;
+
+            case 'Exit':
+                console.log(chalk.yellow('\nGoodbye!'));
+                return;
         }
-    });
-} 
+        console.log('\n');
+    }
+}
+
+main().catch(console.error); 
