@@ -1,6 +1,6 @@
 {
   "name": "cryptnexus",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Advanced password management and encryption system",
   "type": "module",
   "engines": {
