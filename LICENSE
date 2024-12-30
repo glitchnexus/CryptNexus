@@ -27,7 +27,7 @@ STRICT TERMS OF USE:
    If permission is granted, users must:
    - Maintain this complete copyright notice
    - Credit "CryptNexus by GlitchNexus" as original work
-   - Include link to original repository: https://github.com/glitchnexusmit/cryptnexus
+   - Include link to original repository: https://github.com/glitchnexus/cryptnexus
    - Include link to npm package: https://www.npmjs.com/package/cryptnexus
    - Clearly state code is derived from CryptNexus
    - Attribution cannot be transferred or modified
@@ -88,7 +88,7 @@ ALL RIGHTS NOT EXPRESSLY GRANTED ARE RESERVED.
 
 For permissions and inquiries:
 - GitHub: @glitchnexus
-- Repository: https://github.com/glitchnexusmit/cryptnexus
+- Repository: https://github.com/glitchnexus/cryptnexus
 - NPM: https://www.npmjs.com/package/cryptnexus
 
 VIOLATION OF ANY TERMS WILL RESULT IN IMMEDIATE LICENSE TERMINATION 
