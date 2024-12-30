@@ -10,7 +10,7 @@
   [![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue?style=flat-square)](https://www.typescriptlang.org/)
 
   <h3>Advanced Password Management and Encryption System</h3>
-  <h4>Created by <a href="https://github.com/glitchnexusmit">GlitchNexus</a></h4>
+  <h4>Created by <a href="https://github.com/glitchnexus">GlitchNexus</a></h4>
 </div>
 
 ## ✨ Features
@@ -113,13 +113,12 @@ cryptnexus backup         # Create backup
 
 ## 📚 Documentation
 
-Full documentation available at [cryptnexus.dev](https://cryptnexus.dev)
+Soon.
 
 ## 🤝 Support
 
-- Issues: [GitHub Issues](https://github.com/glitchnexusmit/cryptnexus/issues)
+- Issues: [GitHub Issues](https://github.com/glitchnexus/cryptnexus/issues)
 - Email: support@glitchnexus.com
-- Discord: [Join Server](https://discord.gg/cryptnexus)
 
 ## ⚖️ License
 
@@ -130,7 +129,7 @@ Written permission required for any use.
 ## 🌟 Created by GlitchNexus
 
 <div align="center">
-  <a href="https://github.com/glitchnexusmit">
+  <a href="https://github.com/glitchnexus">
     <img src="assets/glitchnexus-logo.png" alt="GlitchNexus" width="200"/>
   </a>
   <p>Visit our GitHub for more amazing projects!</p>
